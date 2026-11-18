@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { RowDataPacket, OkPacket } from 'mysql2';
 
@@ -8,84 +8,69 @@ export class OrdersService {
 
   private pool = () => this.db.getPool();
 
-  async create(flower_name: string, price: number, category_id: number) {
-    try {
-      const [result] = await this.pool().execute<OkPacket>(
-        'INSERT INTO orders (flower_name, price, category_id) VALUES (?, ?, ?)',
-        [flower_name, price, category_id],
-      );
-      return { flower_id: result.insertId, flower_name, price, category_id };
-    } catch (err: any) {
-      if (err.code === 'ER_NO_REFERENCED_ROW_2') {
-        throw new BadRequestException('category_id does not exist');
-      }
-      throw err;
-    }
+  async create(user_id: number, total_amount: number, order_date?: string) {
+    const date = order_date || new Date().toISOString().slice(0, 10);
+    const [result] = await this.pool().execute<OkPacket>(
+      'INSERT INTO orders (id, total_amount, order_date) VALUES (?, ?, ?)',
+      [user_id, total_amount, date],
+    );
+    return { order_id: result.insertId, id: user_id, total_amount, order_date: date };
   }
 
   async getAll() {
     const [rows] = await this.pool().execute<RowDataPacket[]>(
-      `SELECT f.flower_id, f.flower_name, f.price, f.category_id,
-              c.category_name, f.created_at, f.updated_at
-       FROM orders f
-       JOIN categories c ON f.category_id = c.category_id`,
+      `SELECT o.order_id, o.order_date, o.total_amount, o.id AS user_id, u.username, o.created_at, o.updated_at
+       FROM orders o
+       LEFT JOIN users u ON o.id = u.id`,
     );
     return rows;
   }
 
   async findById(id: number) {
     const [rows] = await this.pool().execute<RowDataPacket[]>(
-      `SELECT f.flower_id, f.flower_name, f.price, f.category_id,
-              c.category_name, f.created_at, f.updated_at
-       FROM orders f
-       JOIN categories c ON f.category_id = c.category_id
-       WHERE f.flower_id = ?`,
+      `SELECT o.order_id, o.order_date, o.total_amount, o.id AS user_id, u.username, o.created_at, o.updated_at
+       FROM orders o
+       LEFT JOIN users u ON o.id = u.id
+       WHERE o.order_id = ?`,
       [id],
     );
-    if (!rows[0]) throw new NotFoundException('Flower not found');
+    if (!rows[0]) throw new NotFoundException('Order not found');
     return rows[0];
   }
 
   async update(
     id: number,
-    partial: { flower_name?: string; price?: number; category_id?: number },
+    partial: { total_amount?: number; order_date?: string; user_id?: number },
   ) {
     const fields: string[] = [];
     const values: any[] = [];
-    if (partial.flower_name !== undefined) {
-      fields.push('flower_name = ?');
-      values.push(partial.flower_name);
+    if (partial.total_amount !== undefined) {
+      fields.push('total_amount = ?');
+      values.push(partial.total_amount);
     }
-    if (partial.price !== undefined) {
-      fields.push('price = ?');
-      values.push(partial.price);
+    if (partial.order_date !== undefined) {
+      fields.push('order_date = ?');
+      values.push(partial.order_date);
     }
-    if (partial.category_id !== undefined) {
-      fields.push('category_id = ?');
-      values.push(partial.category_id);
+    if (partial.user_id !== undefined) {
+      fields.push('id = ?');
+      values.push(partial.user_id);
     }
     if (fields.length === 0) return this.findById(id);
     values.push(id);
-    try {
-      await this.pool().execute(
-        `UPDATE orders SET ${fields.join(', ')} WHERE flower_id = ?`,
-        values,
-      );
-    } catch (err: any) {
-      if (err.code === 'ER_NO_REFERENCED_ROW_2') {
-        throw new BadRequestException('category_id does not exist');
-      }
-      throw err;
-    }
+    await this.pool().execute(
+      `UPDATE orders SET ${fields.join(', ')} WHERE order_id = ?`,
+      values,
+    );
     return this.findById(id);
   }
 
   async remove(id: number) {
     const [res] = await this.pool().execute<OkPacket>(
-      'DELETE FROM orders WHERE flower_id = ?',
+      'DELETE FROM orders WHERE order_id = ?',
       [id],
     );
-    if (res.affectedRows === 0) throw new NotFoundException('Flower not found');
+    if (res.affectedRows === 0) throw new NotFoundException('Order not found');
     return { deleted: true };
   }
 }
