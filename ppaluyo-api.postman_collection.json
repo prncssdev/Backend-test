@@ -8,7 +8,7 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:5000",
+      "value": "https://backend-test-2-9tpw.onrender.com",
       "type": "string"
     },
     {
